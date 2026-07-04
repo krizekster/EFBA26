@@ -1,0 +1,9 @@
+[package]
+name = "game3d"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+macroquad = "0.4"
+sim = { path = "../sim" }
+drm = { path = "../drm" }
