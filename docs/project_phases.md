@@ -66,3 +66,11 @@ This document breaks down the entire InGen DRM architecture into discrete, logic
   * Abstracted the rendering loop into `VisualTheme` architectures.
   * Implemented Abstract Cubes, Voxel Terrain, and Wireframe Space rendering pipelines.
   * Allowed dynamic swapping via the `M` key, visually proving the decoupled nature of the InGen DRM.
+
+## Phase 9: Playable FPS Game, HUD & Session Logging
+**Objective:** Evolve the testbed into a fully playable game and implement persistent data tracking for the pitch.
+* **Crates Updated:** `game3d`
+* **Details:**
+  * Rebuilt the 3D client into a First-Person Shooter (FPS) with WASD movement and projectile collision against the boids.
+  * Replaced the text UI with a modern, fully interactive control panel. Users can click to swap DRM components directly on screen or use hotkeys.
+  * Implemented the Session Logger: Automatically outputs the accumulated average and 1% low frame-times to `logs/session_history.log` every time the DRM mode is swapped or the game closes.
