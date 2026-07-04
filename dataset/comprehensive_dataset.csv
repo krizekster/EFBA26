@@ -1,0 +1,19 @@
+Mode,Theme,Avg_FPS,Avg_Sim_ms,P1_Low_Sim_ms
+Baseline (No DRM),Abstract Cubes,15,59.53,65.03
+Baseline (No DRM),Voxel Terrain,15,59.33,60.44
+Baseline (No DRM),Wireframe Space,15,59.72,64.92
+InGen (Lightweight),Abstract Cubes,15,59.35,63.97
+InGen (Lightweight),Voxel Terrain,15,59.35,62.84
+InGen (Lightweight),Wireframe Space,15,59.57,68.66
+Heavy-Reasonable (Sync VM/Thunks),Abstract Cubes,15,59.15,61.42
+Heavy-Reasonable (Sync VM/Thunks),Voxel Terrain,15,59.34,62.52
+Heavy-Reasonable (Sync VM/Thunks),Wireframe Space,15,59.40,62.33
+Heavy-Abusive (Worst Case),Abstract Cubes,15,66.43,99.24
+Heavy-Abusive (Worst Case),Voxel Terrain,12,66.32,96.99
+Heavy-Abusive (Worst Case),Wireframe Space,12,66.57,98.54
+Always Online (Network micro-stutters),Abstract Cubes,14,60.34,76.19
+Always Online (Network micro-stutters),Voxel Terrain,15,60.49,75.42
+Always Online (Network micro-stutters),Wireframe Space,15,59.79,74.18
+VM-Antitamper (Sync Hash Loop),Abstract Cubes,14,63.70,68.57
+VM-Antitamper (Sync Hash Loop),Voxel Terrain,14,63.11,67.01
+VM-Antitamper (Sync Hash Loop),Wireframe Space,15,62.89,64.30
