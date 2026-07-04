@@ -7,7 +7,7 @@ members = [
     "drm",
     "seal-cli",
     "license"
-, "game3d"]
+, "game3d", "synth"]
 
 [profile.release]
 opt-level = 3

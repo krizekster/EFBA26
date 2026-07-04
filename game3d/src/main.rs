@@ -10,7 +10,7 @@ const W: f32 = 1280.0;
 const H: f32 = 720.0;
 const BOID_COUNT: usize = 5000;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 enum Mode {
     Baseline,
     InGen,
@@ -20,7 +20,7 @@ enum Mode {
     VMAntitamper,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 enum VisualTheme {
     Cubes,
     VoxelTerrain,
@@ -101,6 +101,14 @@ fn window_conf() -> Conf {
 
 #[macroquad::main(window_conf)]
 async fn main() {
+    let auto_bench = std::env::args().any(|arg| arg == "--auto-benchmark");
+    let mut auto_timer = 0.0;
+    let auto_modes = [Mode::Baseline, Mode::InGen, Mode::HeavyReasonable, Mode::HeavyAbusive, Mode::AlwaysOnline, Mode::VMAntitamper];
+    let auto_themes = [VisualTheme::Cubes, VisualTheme::VoxelTerrain, VisualTheme::WireframeSpace];
+    let mut auto_mode_idx = 0;
+    let mut auto_theme_idx = 0;
+    let mut auto_dataset = None;
+
     let mut sim = Simulation::new(BOID_COUNT, W, H, 12345);
     let mut mode = Mode::Baseline;
     let mut profile = create_profile(&mode);
@@ -126,39 +134,84 @@ async fn main() {
     // Initialize session logging
     let _ = fs::create_dir_all("logs");
 
+    if auto_bench {
+        println!("--- AUTOMATED BENCHMARK SEQUENCE STARTED ---");
+        let _ = fs::create_dir_all("dataset");
+        auto_dataset = Some(OpenOptions::new().create(true).write(true).truncate(true).open("dataset/comprehensive_dataset.csv").unwrap());
+        let _ = writeln!(auto_dataset.as_mut().unwrap(), "Mode,Theme,Avg_FPS,Avg_Sim_ms,P1_Low_Sim_ms");
+    }
+
     loop {
         let dt = get_frame_time();
+        let mut mode_changed = false;
 
-        // Cursor toggle
-        if is_key_pressed(KeyCode::Escape) {
-            cursor_grabbed = !cursor_grabbed;
-            set_cursor_grab(cursor_grabbed);
-            show_mouse(!cursor_grabbed);
-        }
-
-        // FPS Controls
-        if cursor_grabbed {
-            let delta = mouse_delta_position();
-            yaw += delta.x * 0.5;
-            pitch -= delta.y * 0.5;
-            pitch = pitch.clamp(-1.5, 1.5); // restrict look up/down
-
-            let front = vec3(yaw.cos() * pitch.cos(), pitch.sin(), yaw.sin() * pitch.cos()).normalize();
-            let right = front.cross(vec3(0.0, 1.0, 0.0)).normalize();
+        // Auto Benchmark Logic
+        if auto_bench {
+            auto_timer += dt;
+            // Draw a big overlay saying Auto Benchmarking
+            draw_rectangle(0.0, 0.0, W, H, Color::new(0.0, 0.0, 0.0, 0.5));
+            draw_text("AUTOMATED DATA COLLECTION IN PROGRESS...", W/2.0 - 300.0, H/2.0 - 50.0, 40.0, RED);
+            draw_text(&format!("Testing: {} + {}", mode.name(), theme.name()), W/2.0 - 300.0, H/2.0 + 20.0, 30.0, WHITE);
             
-            let speed = 200.0 * dt;
-            if is_key_down(KeyCode::W) { player_pos += front * speed; }
-            if is_key_down(KeyCode::S) { player_pos -= front * speed; }
-            if is_key_down(KeyCode::A) { player_pos -= right * speed; }
-            if is_key_down(KeyCode::D) { player_pos += right * speed; }
+            if auto_timer > 3.0 { // 3 seconds per combination
+                let mut sorted: Vec<f32> = frame_times.iter().copied().collect();
+                sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                let avg = if sorted.is_empty() { 0.0 } else { sorted.iter().sum::<f32>() / sorted.len() as f32 };
+                let one_percent_count = ((sorted.len() as f32 * 0.01).ceil() as usize).max(1);
+                let slowest_1 = &sorted[sorted.len().saturating_sub(one_percent_count)..];
+                let low1 = if slowest_1.is_empty() { 0.0 } else { slowest_1.iter().sum::<f32>() / slowest_1.len() as f32 };
+                
+                let _ = writeln!(auto_dataset.as_mut().unwrap(), "{},{},{},{:.2},{:.2}", mode.name(), theme.name(), get_fps(), avg, low1);
+                println!("Collected data for {} + {}: FPS {}, Avg {:.2}ms, 1% Low {:.2}ms", mode.name(), theme.name(), get_fps(), avg, low1);
 
-            // Shoot
-            if is_mouse_button_pressed(MouseButton::Left) {
-                projectiles.push(Projectile {
-                    pos: player_pos,
-                    dir: front,
-                    active: true,
-                });
+                auto_theme_idx += 1;
+                if auto_theme_idx >= auto_themes.len() {
+                    auto_theme_idx = 0;
+                    auto_mode_idx += 1;
+                }
+                
+                if auto_mode_idx >= auto_modes.len() {
+                    println!("--- AUTOMATED BENCHMARK SEQUENCE COMPLETED ---");
+                    std::process::exit(0);
+                } else {
+                    auto_timer = 0.0;
+                    mode = auto_modes[auto_mode_idx];
+                    theme = auto_themes[auto_theme_idx];
+                    mode_changed = true;
+                }
+            }
+        } else {
+            // Cursor toggle
+            if is_key_pressed(KeyCode::Escape) {
+                cursor_grabbed = !cursor_grabbed;
+                set_cursor_grab(cursor_grabbed);
+                show_mouse(!cursor_grabbed);
+            }
+
+            // FPS Controls
+            if cursor_grabbed {
+                let delta = mouse_delta_position();
+                yaw += delta.x * 0.5;
+                pitch -= delta.y * 0.5;
+                pitch = pitch.clamp(-1.5, 1.5); // restrict look up/down
+
+                let front = vec3(yaw.cos() * pitch.cos(), pitch.sin(), yaw.sin() * pitch.cos()).normalize();
+                let right = front.cross(vec3(0.0, 1.0, 0.0)).normalize();
+                
+                let speed = 200.0 * dt;
+                if is_key_down(KeyCode::W) { player_pos += front * speed; }
+                if is_key_down(KeyCode::S) { player_pos -= front * speed; }
+                if is_key_down(KeyCode::A) { player_pos -= right * speed; }
+                if is_key_down(KeyCode::D) { player_pos += right * speed; }
+
+                // Shoot
+                if is_mouse_button_pressed(MouseButton::Left) {
+                    projectiles.push(Projectile {
+                        pos: player_pos,
+                        dir: front,
+                        active: true,
+                    });
+                }
             }
         }
 
@@ -166,7 +219,6 @@ async fn main() {
         for p in &mut projectiles {
             if p.active {
                 p.pos += p.dir * 1000.0 * dt;
-                // Basic distance check against boids
                 for (i, boid) in sim.boids.iter().enumerate() {
                     if boid_active[i] {
                         let hover_y = (get_time() as f32 * 2.0 + (i as f32)).sin() * 10.0;
@@ -183,10 +235,6 @@ async fn main() {
             }
         }
 
-        // --- UI & Interaction ---
-        let mut mode_changed = false;
-        
-        // We calculate averages here to log them if mode changes
         let mut sorted: Vec<f32> = frame_times.iter().copied().collect();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let avg = if sorted.is_empty() { 0.0 } else { sorted.iter().sum::<f32>() / sorted.len() as f32 };
@@ -194,17 +242,17 @@ async fn main() {
         let slowest_1 = &sorted[sorted.len().saturating_sub(one_percent_count)..];
         let low1 = if slowest_1.is_empty() { 0.0 } else { slowest_1.iter().sum::<f32>() / slowest_1.len() as f32 };
 
-        if is_key_pressed(KeyCode::M) {
-            theme = match theme {
-                VisualTheme::Cubes => VisualTheme::VoxelTerrain,
-                VisualTheme::VoxelTerrain => VisualTheme::WireframeSpace,
-                VisualTheme::WireframeSpace => VisualTheme::Cubes,
-            };
+        if !auto_bench {
+            if is_key_pressed(KeyCode::M) {
+                theme = match theme {
+                    VisualTheme::Cubes => VisualTheme::VoxelTerrain,
+                    VisualTheme::VoxelTerrain => VisualTheme::WireframeSpace,
+                    VisualTheme::WireframeSpace => VisualTheme::Cubes,
+                };
+            }
+            if is_key_pressed(KeyCode::C) { TAMPER_FLAG.store(true, Ordering::Relaxed); }
+            if is_key_pressed(KeyCode::T) { token_crack_attempted = true; }
         }
-
-        // Crack simulation
-        if is_key_pressed(KeyCode::C) { TAMPER_FLAG.store(true, Ordering::Relaxed); }
-        if is_key_pressed(KeyCode::T) { token_crack_attempted = true; }
 
         tampered = TAMPER_FLAG.load(Ordering::Relaxed) || token_crack_attempted;
 
@@ -220,7 +268,6 @@ async fn main() {
 
         clear_background(Color::new(0.05, 0.05, 0.1, 1.0));
 
-        // Setup 3D Camera
         let front = vec3(yaw.cos() * pitch.cos(), pitch.sin(), yaw.sin() * pitch.cos()).normalize();
         set_camera(&Camera3D {
             position: player_pos,
@@ -229,7 +276,6 @@ async fn main() {
             ..Default::default()
         });
 
-        // Draw 3D Environment
         for (i, boid) in sim.boids.iter().enumerate() {
             if !boid_active[i] { continue; }
             let color = if i % 3 == 0 { RED } else if i % 3 == 1 { GREEN } else { BLUE };
@@ -252,23 +298,19 @@ async fn main() {
             }
         }
         
-        // Draw projectiles
         for p in &projectiles {
             if p.active { draw_sphere(p.pos, 2.0, None, YELLOW); }
         }
 
-        // --- Back to 2D for UI ---
         set_default_camera();
 
-        // FPS Crosshair
         if cursor_grabbed {
             draw_line(W/2.0 - 10.0, H/2.0, W/2.0 + 10.0, H/2.0, 2.0, WHITE);
             draw_line(W/2.0, H/2.0 - 10.0, W/2.0, H/2.0 + 10.0, 2.0, WHITE);
-        } else {
+        } else if !auto_bench {
             draw_text("PRESS ESC TO ENTER FPS MODE", W/2.0 - 200.0, H/2.0 - 50.0, 30.0, YELLOW);
         }
 
-        // UI Panel Left
         draw_rectangle(10.0, 10.0, 320.0, 340.0, Color::new(0.0, 0.0, 0.0, 0.8));
         draw_text("3D DRM FPS TESTBED", 20.0, 35.0, 24.0, WHITE);
         draw_text(&format!("Score: {}", score), 20.0, 60.0, 24.0, ORANGE);
@@ -278,36 +320,36 @@ async fn main() {
 
         draw_text("DRM Control Dashboard:", 20.0, 155.0, 16.0, GRAY);
         
-        if draw_button(20.0, 165.0, 130.0, 30.0, "1. Baseline", matches!(mode, Mode::Baseline), cursor_grabbed) || is_key_pressed(KeyCode::Key1) {
-            if !matches!(mode, Mode::Baseline) { log_session(mode.name(), avg, low1); mode = Mode::Baseline; mode_changed = true; }
-        }
-        if draw_button(160.0, 165.0, 130.0, 30.0, "2. InGen", matches!(mode, Mode::InGen), cursor_grabbed) || is_key_pressed(KeyCode::Key2) {
-            if !matches!(mode, Mode::InGen) { log_session(mode.name(), avg, low1); mode = Mode::InGen; mode_changed = true; }
-        }
-        if draw_button(20.0, 200.0, 130.0, 30.0, "3. Heavy-R", matches!(mode, Mode::HeavyReasonable), cursor_grabbed) || is_key_pressed(KeyCode::Key3) {
-            if !matches!(mode, Mode::HeavyReasonable) { log_session(mode.name(), avg, low1); mode = Mode::HeavyReasonable; mode_changed = true; }
-        }
-        if draw_button(160.0, 200.0, 130.0, 30.0, "4. Heavy-A", matches!(mode, Mode::HeavyAbusive), cursor_grabbed) || is_key_pressed(KeyCode::Key4) {
-            if !matches!(mode, Mode::HeavyAbusive) { log_session(mode.name(), avg, low1); mode = Mode::HeavyAbusive; mode_changed = true; }
-        }
-        if draw_button(20.0, 235.0, 130.0, 30.0, "5. Online", matches!(mode, Mode::AlwaysOnline), cursor_grabbed) || is_key_pressed(KeyCode::Key5) {
-            if !matches!(mode, Mode::AlwaysOnline) { log_session(mode.name(), avg, low1); mode = Mode::AlwaysOnline; mode_changed = true; }
-        }
-        if draw_button(160.0, 235.0, 130.0, 30.0, "6. VM-Hash", matches!(mode, Mode::VMAntitamper), cursor_grabbed) || is_key_pressed(KeyCode::Key6) {
-            if !matches!(mode, Mode::VMAntitamper) { log_session(mode.name(), avg, low1); mode = Mode::VMAntitamper; mode_changed = true; }
+        if !auto_bench {
+            if draw_button(20.0, 165.0, 130.0, 30.0, "1. Baseline", matches!(mode, Mode::Baseline), cursor_grabbed) || is_key_pressed(KeyCode::Key1) {
+                if !matches!(mode, Mode::Baseline) { log_session(mode.name(), avg, low1); mode = Mode::Baseline; mode_changed = true; }
+            }
+            if draw_button(160.0, 165.0, 130.0, 30.0, "2. InGen", matches!(mode, Mode::InGen), cursor_grabbed) || is_key_pressed(KeyCode::Key2) {
+                if !matches!(mode, Mode::InGen) { log_session(mode.name(), avg, low1); mode = Mode::InGen; mode_changed = true; }
+            }
+            if draw_button(20.0, 200.0, 130.0, 30.0, "3. Heavy-R", matches!(mode, Mode::HeavyReasonable), cursor_grabbed) || is_key_pressed(KeyCode::Key3) {
+                if !matches!(mode, Mode::HeavyReasonable) { log_session(mode.name(), avg, low1); mode = Mode::HeavyReasonable; mode_changed = true; }
+            }
+            if draw_button(160.0, 200.0, 130.0, 30.0, "4. Heavy-A", matches!(mode, Mode::HeavyAbusive), cursor_grabbed) || is_key_pressed(KeyCode::Key4) {
+                if !matches!(mode, Mode::HeavyAbusive) { log_session(mode.name(), avg, low1); mode = Mode::HeavyAbusive; mode_changed = true; }
+            }
+            if draw_button(20.0, 235.0, 130.0, 30.0, "5. Online", matches!(mode, Mode::AlwaysOnline), cursor_grabbed) || is_key_pressed(KeyCode::Key5) {
+                if !matches!(mode, Mode::AlwaysOnline) { log_session(mode.name(), avg, low1); mode = Mode::AlwaysOnline; mode_changed = true; }
+            }
+            if draw_button(160.0, 235.0, 130.0, 30.0, "6. VM-Hash", matches!(mode, Mode::VMAntitamper), cursor_grabbed) || is_key_pressed(KeyCode::Key6) {
+                if !matches!(mode, Mode::VMAntitamper) { log_session(mode.name(), avg, low1); mode = Mode::VMAntitamper; mode_changed = true; }
+            }
+
+            if draw_button(20.0, 275.0, 270.0, 30.0, &format!("Theme (M): {}", theme.name()), false, cursor_grabbed) {
+                theme = match theme {
+                    VisualTheme::Cubes => VisualTheme::VoxelTerrain,
+                    VisualTheme::VoxelTerrain => VisualTheme::WireframeSpace,
+                    VisualTheme::WireframeSpace => VisualTheme::Cubes,
+                };
+            }
+            draw_text("Crack Simulator (Keys): 'C' = RAM Tamper, 'T' = Token", 20.0, 325.0, 14.0, ORANGE);
         }
 
-        if draw_button(20.0, 275.0, 270.0, 30.0, &format!("Theme (M): {}", theme.name()), false, cursor_grabbed) {
-            theme = match theme {
-                VisualTheme::Cubes => VisualTheme::VoxelTerrain,
-                VisualTheme::VoxelTerrain => VisualTheme::WireframeSpace,
-                VisualTheme::WireframeSpace => VisualTheme::Cubes,
-            };
-        }
-
-        draw_text("Crack Simulator (Keys): 'C' = RAM Tamper, 'T' = Token", 20.0, 325.0, 14.0, ORANGE);
-
-        // --- Live Telemetry Panel Right ---
         draw_rectangle(W - 460.0, 10.0, 450.0, 180.0, Color::new(0.0, 0.1, 0.0, 0.8));
         draw_text("LIVE SECURITY TELEMETRY", W - 440.0, 35.0, 20.0, GREEN);
         
@@ -338,14 +380,20 @@ async fn main() {
             frame_times.clear();
         }
 
-        // Tamper Overlay
-        if tampered {
+        if tampered && !auto_bench {
             draw_rectangle(0.0, 0.0, W, H, Color::new(1.0, 0.0, 0.0, 0.4));
             let msg = if token_crack_attempted { "DRM VIOLATION: INVALID LICENSE TOKEN SIGNATURE!" } 
                       else { "DRM VIOLATION: MEMORY TAMPERING DETECTED!" };
             let text_size = measure_text(msg, None, 40, 1.0);
             draw_text(msg, W / 2.0 - text_size.width / 2.0, H / 2.0, 40.0, WHITE);
             draw_text("Gameplay Halted. Press '1' to reset.", W / 2.0 - 200.0, H / 2.0 + 40.0, 30.0, WHITE);
+        }
+
+        if auto_bench {
+            // Draw a big overlay saying Auto Benchmarking OVER everything
+            draw_rectangle(0.0, 0.0, W, H, Color::new(0.0, 0.0, 0.0, 0.5));
+            draw_text("AUTOMATED DATA COLLECTION IN PROGRESS...", W/2.0 - 400.0, H/2.0 - 50.0, 40.0, RED);
+            draw_text(&format!("Testing: {} + {}", mode.name(), theme.name()), W/2.0 - 300.0, H/2.0 + 20.0, 30.0, WHITE);
         }
 
         next_frame().await;
