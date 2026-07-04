@@ -1,0 +1,9 @@
+[package]
+name = "game"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+drm = { version = "0.1.0", path = "../drm" }
+macroquad = "0.4.15"
+sim = { version = "0.1.0", path = "../sim" }
